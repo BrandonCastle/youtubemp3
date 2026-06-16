@@ -48,16 +48,18 @@ async def convert(url: str = Query(..., description="YouTube URL")):
     out_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(out_dir / "%(title)s.%(ext)s")
 
-    cmd = [
-        "yt-dlp",
-        "--no-playlist",
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--audio-quality", "0",          # best VBR quality
-        "--output", out_template,
-        "--no-progress",
-        "--no-warnings",
-        f"https://www.youtube.com/watch?v={video_id}",
+   cmd = [
+    "yt-dlp",
+    "--no-playlist",
+    "--extract-audio",
+    "--audio-format", "mp3",
+    "--audio-quality", "0",
+    "--format", "bestaudio/best",
+    "--output", out_template,
+    "--no-progress",
+    "--no-warnings",
+    "--no-check-certificates",
+    f"https://www.youtube.com/watch?v={video_id}",
     ]
 
     try:

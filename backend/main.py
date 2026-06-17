@@ -57,7 +57,7 @@ async def convert(url: str = Query(..., description="YouTube URL")):
     out_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(out_dir / "%(title)s.%(ext)s")
 
-    # Write cookies from environment variable to a temp file
+   
     cookies_content = os.environ.get("YT_COOKIES", "")
     cookies_file = None
     if cookies_content:

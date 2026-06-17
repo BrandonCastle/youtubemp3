@@ -1,25 +1,26 @@
+import os
 import re
 import uuid
 import asyncio
 from pathlib import Path
- 
+
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
- 
+
 app = FastAPI()
- 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
- 
+
 TMP = Path("/tmp/ytmp3")
 TMP.mkdir(exist_ok=True)
- 
- 
+
+
 def extract_video_id(url: str) -> str | None:
     patterns = [
         r"(?:v=|/shorts/|youtu\.be/)([A-Za-z0-9_-]{11})",
@@ -30,8 +31,8 @@ def extract_video_id(url: str) -> str | None:
         if m:
             return m.group(1)
     return None
- 
- 
+
+
 async def run_cmd(cmd):
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -40,22 +41,29 @@ async def run_cmd(cmd):
     )
     stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=180)
     return proc.returncode, stdout.decode(errors="replace"), stderr.decode(errors="replace")
- 
- 
+
+
 @app.get("/convert")
 async def convert(url: str = Query(..., description="YouTube URL")):
     video_id = extract_video_id(url)
     if not video_id:
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
- 
-    # Always update yt-dlp before converting (keeps it fresh without rebuilding Docker)
+
+    # Update yt-dlp on every request so it never goes stale
     await run_cmd(["yt-dlp", "-U"])
- 
+
     job_id = uuid.uuid4().hex
     out_dir = TMP / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(out_dir / "%(title)s.%(ext)s")
- 
+
+    # Write cookies from environment variable to a temp file
+    cookies_content = os.environ.get("YT_COOKIES", "")
+    cookies_file = None
+    if cookies_content:
+        cookies_file = out_dir / "cookies.txt"
+        cookies_file.write_text(cookies_content)
+
     cmd = [
         "yt-dlp",
         "--no-playlist",
@@ -65,25 +73,28 @@ async def convert(url: str = Query(..., description="YouTube URL")):
         "--format", "bestaudio/best",
         "--output", out_template,
         "--no-progress",
-        "--extractor-args", "youtube:player_client=ios",
-        f"https://www.youtube.com/watch?v={video_id}",
+        "--extractor-args", "youtube:player_client=web",
     ]
- 
+
+    if cookies_file:
+        cmd += ["--cookies", str(cookies_file)]
+
+    cmd.append(f"https://www.youtube.com/watch?v={video_id}")
+
     try:
         returncode, stdout, stderr = await run_cmd(cmd)
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Conversion timed out — try a shorter video")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
     if returncode != 0:
-        # Return full stderr so we can debug
         raise HTTPException(status_code=500, detail=stderr.strip() or "yt-dlp failed")
- 
+
     mp3_files = list(out_dir.glob("*.mp3"))
     if not mp3_files:
         raise HTTPException(status_code=500, detail="MP3 not found after conversion")
- 
+
     mp3_path = mp3_files[0]
     return FileResponse(
         path=str(mp3_path),
@@ -94,8 +105,8 @@ async def convert(url: str = Query(..., description="YouTube URL")):
             "Cache-Control": "no-store",
         },
     )
- 
- 
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

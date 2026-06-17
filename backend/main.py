@@ -65,7 +65,7 @@ async def convert(url: str = Query(..., description="YouTube URL")):
         "--format", "bestaudio/best",
         "--output", out_template,
         "--no-progress",
-        "--extractor-args", "youtube:player_client=tv_embedded",
+        "--extractor-args", "youtube:player_client=ios",
         f"https://www.youtube.com/watch?v={video_id}",
     ]
  
